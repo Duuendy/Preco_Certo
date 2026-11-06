@@ -1,0 +1,51 @@
+name: preco-certo
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: preco
+      POSTGRES_USER: preco
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Execute scripts/iniciar.ps1 para gerar o arquivo .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U preco -d preco"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  app:
+    build: .
+    environment:
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: db
+      UPLOAD_DIR: /data/photos
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8088}:8000"
+    volumes:
+      - photos:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    restart: unless-stopped
+  worker:
+    build: .
+    command: ["python", "worker.py"]
+    environment:
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: db
+      UPLOAD_DIR: /data/photos
+    volumes:
+      - photos:/data
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  postgres_data:
+  photos:
